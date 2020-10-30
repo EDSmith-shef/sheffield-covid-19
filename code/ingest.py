@@ -65,14 +65,17 @@ def main():
     args = parser.parse_args()
 
     dom = fetch()
-
+    
     table = extract(dom)
     validated = validate(table)
     data = transform(validated)
     for row in data:
         print(row)
 
+    heatdata = heat_transform(validated) # separate transform for functions requiring a day-of-week value
+
     create_visualisations(data)
+    create_heatmap(heatdata)
 
     # Converting output to CSV or JSON based on user input
     if args.csv_file is not None:
@@ -105,7 +108,20 @@ def transform(rows):
         out = [iso_date]
         out.extend(int(x) for x in row[1:])
         result.append(out)
+    return sorted(result)
 
+def heat_transform(rows):
+    """
+    Similar to the transform() function above, but the weekday has also been included
+    """
+
+    result = []
+    for row in rows:
+        week_day = str(dateutil.parser.parse(row[0]).weekday()) # days stored as 0-6 ints where 0 = Monday
+        iso_date = str(dateutil.parser.parse(row[0]).date())
+        out = [week_day,iso_date]
+        out.extend(int(x) for x in row[1:])
+        result.append(out)
     return sorted(result)
 
 
@@ -122,6 +138,7 @@ def extract(dom):
         result.append([el.text for el in row])
 
     return result
+
 
 
 def fetch():
@@ -216,6 +233,46 @@ def add_column_labels(bars, axes):
             ha="center",
             va="bottom",
         )  # horizontal/vertical align
+
+def create_heatmap(heatdata):
+
+    heatarray = np.array(heatdata)
+    days = heatarray[:,0].astype(int) # Weekdays held as 0-6 ints where 0 = Monday
+    studentvals = heatarray[:,3].astype(int)
+    staffvals = heatarray[:,2].astype(int)
+
+    # used a histogram function for this
+    studentsums = np.bincount(days, weights=studentvals)
+    staffsums = np.bincount(days, weights=staffvals)
+
+    plotarray = np.array([studentsums,staffsums])
+
+    # plot implementation uses method from https://matplotlib.org/3.1.1/gallery/images_contours_and_fields/image_annotated_heatmap.html
+    casevals = ["Students","Staff"]
+    days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(plotarray)
+
+    ax.set_xticks(np.arange(len(days)))
+    ax.set_yticks(np.arange(len(casevals)))
+
+    ax.set_xticklabels(days)
+    ax.set_yticklabels(casevals)
+
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+         rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    for i in range(len(casevals)):
+        for j in range(len(days)):
+            text = ax.text(j, i, plotarray[i, j],
+                       ha="center", va="center", color="w")
+
+    ax.set_title("Case rates per weekday")
+    fig.tight_layout()
+    heatmapname = str(date.today()) + "-covid-cases-by-weekday.png"
+    plt.savefig(heatmapname, dpi=600)
 
 
 if __name__ == "__main__":
