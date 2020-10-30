@@ -65,7 +65,6 @@ def main():
     args = parser.parse_args()
 
     dom = fetch()
-    
     table = extract(dom)
     validated = validate(table)
     data = transform(validated)
